@@ -7,7 +7,7 @@ class FootballBettingModel:
         self.root = root
         self.root.title("Odds Apex In-Play")
         self.create_widgets()
-        # History is still maintained for potential future use
+        # History is maintained for potential future use
         self.history = {
             "home_xg": [],
             "away_xg": [],
@@ -19,16 +19,14 @@ class FootballBettingModel:
         self.history_length = 10  # Store last 10 updates
 
     def create_widgets(self):
-        # Create a canvas and scrollbar
+        # Create a canvas and scrollbar for scrolling
         self.canvas = tk.Canvas(self.root)
         self.scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = ttk.Frame(self.canvas)
 
         self.scrollable_frame.bind(
             "<Configure>",
-            lambda e: self.canvas.configure(
-                scrollregion=self.canvas.bbox("all")
-            )
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
 
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
@@ -40,8 +38,7 @@ class FootballBettingModel:
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-        # Updated fields: removed Account Balance and Live Next Goal Odds,
-        # added Live Odds Home/Draw/Away and Profit from pre-match winnings.
+        # Define the fields (inputs)
         self.fields = {
             "Home Avg Goals Scored": tk.DoubleVar(),
             "Home Avg Goals Conceded": tk.DoubleVar(),
@@ -58,17 +55,14 @@ class FootballBettingModel:
             "Away Possession %": tk.DoubleVar(),
             "Home Shots on Target": tk.IntVar(),
             "Away Shots on Target": tk.IntVar(),
-            # New metrics replacing pass accuracy and tackle success:
             "Home Opp Box Touches": tk.DoubleVar(),
             "Away Opp Box Touches": tk.DoubleVar(),
             "Home Corners": tk.DoubleVar(),
             "Away Corners": tk.DoubleVar(),
-            # Live odds for match outcomes:
             "Live Odds Home": tk.DoubleVar(),
             "Live Odds Draw": tk.DoubleVar(),
             "Live Odds Away": tk.DoubleVar(),
-            # New Profit field (winnings from the pre-match calculator)
-            "Profit": tk.DoubleVar()
+            "Profit": tk.DoubleVar()  # Used as liability for lay bets or stake for back bets
         }
 
         row = 0
@@ -85,9 +79,13 @@ class FootballBettingModel:
         reset_button = ttk.Button(self.scrollable_frame, text="Reset Fields", command=self.reset_fields)
         reset_button.grid(row=row+1, column=0, columnspan=2, pady=10)
 
-        # Bet recommendation label
-        self.next_goal_label = ttk.Label(self.scrollable_frame, text="", font=("TkDefaultFont", 10, "bold"))
-        self.next_goal_label.grid(row=row+2, column=0, columnspan=2, pady=10)
+        # Text widget for recommendations with multi-colored text.
+        self.recommendation_text = tk.Text(self.scrollable_frame, height=10, wrap="word")
+        self.recommendation_text.grid(row=row+2, column=0, columnspan=2, pady=10)
+        self.recommendation_text.tag_configure("lay", foreground="red")
+        self.recommendation_text.tag_configure("back", foreground="blue")
+        self.recommendation_text.tag_configure("normal", foreground="black")
+        self.recommendation_text.config(state="disabled")
 
     def reset_fields(self):
         for var in self.fields.values():
@@ -159,18 +157,18 @@ class FootballBettingModel:
         home_sot = self.fields["Home Shots on Target"].get()
         away_sot = self.fields["Away Shots on Target"].get()
 
-        # Retrieve new metrics for attacking intent and set pieces
+        # New metrics for attacking intent and set pieces
         home_op_box_touches = self.fields["Home Opp Box Touches"].get()
         away_op_box_touches = self.fields["Away Opp Box Touches"].get()
         home_corners = self.fields["Home Corners"].get()
         away_corners = self.fields["Away Corners"].get()
 
-        # Retrieve live odds for match outcomes
+        # Live odds for match outcomes
         live_odds_home = self.fields["Live Odds Home"].get()
         live_odds_draw = self.fields["Live Odds Draw"].get()
         live_odds_away = self.fields["Live Odds Away"].get()
 
-        # Retrieve Profit from pre-match winnings
+        # Profit from pre-match winnings (used as liability for lay bets or stake for back bets)
         profit = self.fields["Profit"].get()
 
         # Update history (if needed)
@@ -233,35 +231,66 @@ class FootballBettingModel:
         fair_odds_draw = 1 / draw_probability if draw_probability > 0 else float('inf')
         fair_odds_away = 1 / away_win_probability if away_win_probability > 0 else float('inf')
 
-        # Calculate the edge for each outcome if fair odds exceed live odds
+        # Calculate the edge for lay bets (when fair odds exceed live odds)
         edge_home = (fair_odds_home - live_odds_home) / fair_odds_home if fair_odds_home > live_odds_home else 0
         edge_draw = (fair_odds_draw - live_odds_draw) / fair_odds_draw if fair_odds_draw > live_odds_draw else 0
         edge_away = (fair_odds_away - live_odds_away) / fair_odds_away if fair_odds_away > live_odds_away else 0
 
-        # Build the output text showing fair odds, live odds, and edge values
-        rec_text = f"Fair Odds - Home: {fair_odds_home:.2f}, Draw: {fair_odds_draw:.2f}, Away: {fair_odds_away:.2f}\n"
-        rec_text += f"Live Odds - Home: {live_odds_home:.2f}, Draw: {live_odds_draw:.2f}, Away: {live_odds_away:.2f}\n\n"
-        # Check and add lay recommendations along with the stake if using Profit as liability
-        if fair_odds_home > live_odds_home or fair_odds_draw > live_odds_draw or fair_odds_away > live_odds_away:
-            if fair_odds_home > live_odds_home:
-                stake_home = profit / (live_odds_home - 1) if live_odds_home > 1 else 0
-                rec_text += f"Lay Home: Edge: {edge_home:.2%}, Stake (using Profit): {stake_home:.2f}\n"
-            if fair_odds_draw > live_odds_draw:
-                stake_draw = profit / (live_odds_draw - 1) if live_odds_draw > 1 else 0
-                rec_text += f"Lay Draw: Edge: {edge_draw:.2%}, Stake (using Profit): {stake_draw:.2f}\n"
-            if fair_odds_away > live_odds_away:
-                stake_away = profit / (live_odds_away - 1) if live_odds_away > 1 else 0
-                rec_text += f"Lay Away: Edge: {edge_away:.2%}, Stake (using Profit): {stake_away:.2f}\n"
-            recommendation_type = "lay"
-        else:
-            rec_text += "No lay bet recommended."
-            recommendation_type = "no"
+        # Build a summary header
+        summary = (
+            f"Fair Odds - Home: {fair_odds_home:.2f}, Draw: {fair_odds_draw:.2f}, Away: {fair_odds_away:.2f}\n"
+            f"Live Odds - Home: {live_odds_home:.2f}, Draw: {live_odds_draw:.2f}, Away: {live_odds_away:.2f}\n\n"
+        )
 
-        # Set the label color: green if a lay bet is recommended, red otherwise.
-        if recommendation_type == "lay":
-            self.next_goal_label.config(text=rec_text, foreground="green")
+        # Update the recommendation text widget with multi-colored recommendations
+        self.recommendation_text.config(state="normal")
+        self.recommendation_text.delete("1.0", tk.END)
+        # Insert summary in default (black) text
+        self.recommendation_text.insert(tk.END, summary, "normal")
+        
+        # Home market recommendations
+        if fair_odds_home > live_odds_home:
+            stake_home = profit / (live_odds_home - 1) if live_odds_home > 1 else 0
+            line = f"Lay Home: Edge: {edge_home:.2%}, Stake (using Profit as liability): {stake_home:.2f}\n"
+            self.recommendation_text.insert(tk.END, line, "lay")
+        elif fair_odds_home < live_odds_home:
+            edge_back_home = (live_odds_home - fair_odds_home) / fair_odds_home
+            profit_home = profit * (live_odds_home - 1)
+            line = f"Back Home: Edge: {edge_back_home:.2%}, Profit: {profit_home:.2f}\n"
+            self.recommendation_text.insert(tk.END, line, "back")
         else:
-            self.next_goal_label.config(text=rec_text, foreground="red")
+            line = "Home: No clear edge.\n"
+            self.recommendation_text.insert(tk.END, line, "normal")
+        
+        # Draw market recommendations
+        if fair_odds_draw > live_odds_draw:
+            stake_draw = profit / (live_odds_draw - 1) if live_odds_draw > 1 else 0
+            line = f"Lay Draw: Edge: {edge_draw:.2%}, Stake: {stake_draw:.2f}\n"
+            self.recommendation_text.insert(tk.END, line, "lay")
+        elif fair_odds_draw < live_odds_draw:
+            edge_back_draw = (live_odds_draw - fair_odds_draw) / fair_odds_draw
+            profit_draw = profit * (live_odds_draw - 1)
+            line = f"Back Draw: Edge: {edge_back_draw:.2%}, Profit: {profit_draw:.2f}\n"
+            self.recommendation_text.insert(tk.END, line, "back")
+        else:
+            line = "Draw: No clear edge.\n"
+            self.recommendation_text.insert(tk.END, line, "normal")
+        
+        # Away market recommendations
+        if fair_odds_away > live_odds_away:
+            stake_away = profit / (live_odds_away - 1) if live_odds_away > 1 else 0
+            line = f"Lay Away: Edge: {edge_away:.2%}, Stake: {stake_away:.2f}\n"
+            self.recommendation_text.insert(tk.END, line, "lay")
+        elif fair_odds_away < live_odds_away:
+            edge_back_away = (live_odds_away - fair_odds_away) / fair_odds_away
+            profit_away = profit * (live_odds_away - 1)
+            line = f"Back Away: Edge: {edge_back_away:.2%}, Profit: {profit_away:.2f}\n"
+            self.recommendation_text.insert(tk.END, line, "back")
+        else:
+            line = "Away: No clear edge.\n"
+            self.recommendation_text.insert(tk.END, line, "normal")
+
+        self.recommendation_text.config(state="disabled")
 
     def update_history(self, key, value):
         if key not in self.history:
